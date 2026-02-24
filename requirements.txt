@@ -1,4 +1,2 @@
 requests
 beautifulsoup4
-spotipy
-python-dotenv

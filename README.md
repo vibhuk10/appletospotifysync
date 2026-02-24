@@ -1,47 +1,36 @@
-# Apple Music to Spotify Playlist Sync
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Syncs tracks from a public Apple Music playlist to a Spotify playlist, skipping duplicates.
+## Getting Started
 
-## Setup
-
-### 1. Install dependencies
+First, run the development server:
 
 ```bash
-cd apple_to_spotify_sync
-pip install -r requirements.txt
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-### 2. Create a Spotify Developer App
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-1. Go to https://developer.spotify.com/dashboard
-2. Click "Create App"
-3. Set the **Redirect URI** to `http://localhost:8888/callback`
-4. Note your **Client ID** and **Client Secret**
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-### 3. Configure credentials
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-```bash
-cp .env.example .env
-```
+## Learn More
 
-Edit `.env` and fill in your Spotify Client ID and Client Secret. The playlist IDs are pre-filled.
+To learn more about Next.js, take a look at the following resources:
 
-### 4. Run
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-```bash
-python sync.py
-```
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-On first run, a browser window will open for Spotify OAuth. Log in and authorize the app. The token is cached in `.cache` for subsequent runs.
+## Deploy on Vercel
 
-## Configuration
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-All config is in `.env`:
-
-| Variable | Description |
-|---|---|
-| `SPOTIPY_CLIENT_ID` | Spotify app Client ID |
-| `SPOTIPY_CLIENT_SECRET` | Spotify app Client Secret |
-| `SPOTIPY_REDIRECT_URI` | OAuth redirect URI (default: `http://localhost:8888/callback`) |
-| `SPOTIFY_PLAYLIST_ID` | Target Spotify playlist ID |
-| `APPLE_MUSIC_URL` | Source Apple Music playlist URL |
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
