@@ -138,7 +138,11 @@ export function clearAuth(): void {
 
 // --- Spotify API Helpers ---
 
-async function spotifyFetch(path: string, options: RequestInit = {}): Promise<Response> {
+async function spotifyFetch(
+  path: string,
+  options: RequestInit = {},
+  retries = 0
+): Promise<Response> {
   const token = await getAccessToken();
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -155,11 +159,14 @@ async function spotifyFetch(path: string, options: RequestInit = {}): Promise<Re
     },
   });
 
-  // Handle rate limiting
+  // Handle rate limiting with max 3 retries
   if (response.status === 429) {
+    if (retries >= 3) {
+      throw new Error(`Spotify rate limit exceeded after ${retries} retries: ${path}`);
+    }
     const retryAfter = Number(response.headers.get("Retry-After") || 1);
     await sleep(retryAfter * 1000);
-    return spotifyFetch(path, options);
+    return spotifyFetch(path, options, retries + 1);
   }
 
   if (!response.ok) {
@@ -353,7 +360,7 @@ export async function syncPlaylist(
       results[i].status = "not_found";
       notFound++;
       onProgress([...results], i);
-      await sleep(100);
+      await sleep(300);
       continue;
     }
 
@@ -363,7 +370,7 @@ export async function syncPlaylist(
       results[i].spotifyTrack = match;
       skipped++;
       onProgress([...results], i);
-      await sleep(100);
+      await sleep(300);
       continue;
     }
 
@@ -374,7 +381,7 @@ export async function syncPlaylist(
       results[i].spotifyTrack = match;
       skipped++;
       onProgress([...results], i);
-      await sleep(100);
+      await sleep(300);
       continue;
     }
 
@@ -384,7 +391,7 @@ export async function syncPlaylist(
     existing.ids.add(match.id);
     existing.normalized.add(normKey);
     onProgress([...results], i);
-    await sleep(100);
+    await sleep(300);
   }
 
   // Add tracks in batches of 100
