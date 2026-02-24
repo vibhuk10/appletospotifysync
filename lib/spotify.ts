@@ -159,13 +159,16 @@ async function spotifyFetch(
     },
   });
 
-  // Handle rate limiting with max 3 retries
+  // Handle rate limiting with exponential backoff (max 5 retries)
   if (response.status === 429) {
-    if (retries >= 3) {
-      throw new Error(`Spotify rate limit exceeded after ${retries} retries: ${path}`);
+    if (retries >= 5) {
+      const err = new Error(`Spotify rate limit exceeded: ${path}`);
+      err.name = "RateLimitError";
+      throw err;
     }
     const retryAfter = Number(response.headers.get("Retry-After") || 1);
-    await sleep(retryAfter * 1000);
+    const backoff = retryAfter * 1000 * Math.pow(2, retries);
+    await sleep(backoff);
     return spotifyFetch(path, options, retries + 1);
   }
 
@@ -292,6 +295,8 @@ async function searchTrack(
 
     return null;
   } catch (err) {
+    // Let rate limit errors propagate so the sync loop can wait and retry
+    if (err instanceof Error && err.name === "RateLimitError") throw err;
     console.error(`Search failed for "${title}" - "${artist}":`, err);
     return null;
   }
@@ -348,21 +353,39 @@ export async function syncPlaylist(
   let added = 0;
   let skipped = 0;
   let notFound = 0;
+  let trackDelay = 300;
 
   for (let i = 0; i < appleTracks.length; i++) {
     const track = appleTracks[i];
     results[i].status = "searching";
     onProgress([...results], i);
 
-    const match = await searchTrack(track.title, track.artist);
+    let match: Awaited<ReturnType<typeof searchTrack>> = null;
+    try {
+      match = await searchTrack(track.title, track.artist);
+    } catch (err) {
+      if (err instanceof Error && err.name === "RateLimitError") {
+        // Back off heavily then retry this track once
+        trackDelay = Math.min(trackDelay * 2, 5000);
+        await sleep(trackDelay);
+        try {
+          match = await searchTrack(track.title, track.artist);
+        } catch {
+          // Still failing — mark as not found and continue
+        }
+      }
+    }
 
     if (!match) {
       results[i].status = "not_found";
       notFound++;
       onProgress([...results], i);
-      await sleep(300);
+      await sleep(trackDelay);
       continue;
     }
+
+    // Successful search — ease back toward normal speed
+    trackDelay = Math.max(300, trackDelay - 100);
 
     // Check by ID
     if (existing.ids.has(match.id)) {
@@ -370,7 +393,7 @@ export async function syncPlaylist(
       results[i].spotifyTrack = match;
       skipped++;
       onProgress([...results], i);
-      await sleep(300);
+      await sleep(trackDelay);
       continue;
     }
 
@@ -381,7 +404,7 @@ export async function syncPlaylist(
       results[i].spotifyTrack = match;
       skipped++;
       onProgress([...results], i);
-      await sleep(300);
+      await sleep(trackDelay);
       continue;
     }
 
@@ -391,7 +414,7 @@ export async function syncPlaylist(
     existing.ids.add(match.id);
     existing.normalized.add(normKey);
     onProgress([...results], i);
-    await sleep(300);
+    await sleep(trackDelay);
   }
 
   // Add tracks in batches of 100
