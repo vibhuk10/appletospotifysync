@@ -18,26 +18,39 @@ import type {
 type FlowState = "idle" | "scraping" | "scraped" | "syncing" | "done";
 
 export default function Home() {
+  // Restore scraped tracks from sessionStorage (survives OAuth redirect)
+  const savedResult = typeof window !== "undefined"
+    ? (() => {
+        try {
+          const raw = sessionStorage.getItem("scrapeResult");
+          if (raw) {
+            const { tracks, playlistName: name } = JSON.parse(raw);
+            if (tracks?.length > 0) return { tracks, name: name || "" };
+          }
+        } catch {
+          sessionStorage.removeItem("scrapeResult");
+        }
+        return null;
+      })()
+    : null;
+
   // Flow state
-  const [flowState, setFlowState] = useState<FlowState>("idle");
+  const [flowState, setFlowState] = useState<FlowState>(savedResult ? "scraped" : "idle");
 
   // Scrape data
-  const [appleTracks, setAppleTracks] = useState<AppleTrack[]>([]);
-  const [playlistName, setPlaylistName] = useState("");
+  const [appleTracks, setAppleTracks] = useState<AppleTrack[]>(savedResult?.tracks ?? []);
+  const [playlistName, setPlaylistName] = useState(savedResult?.name ?? "");
 
   // Spotify state
-  const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
+  const [isSpotifyConnected, setIsSpotifyConnected] = useState(
+    () => typeof window !== "undefined" && isAuthenticated()
+  );
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
 
   // Sync state
   const [syncResults, setSyncResults] = useState<SyncTrackResult[]>([]);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
-
-  // Check Spotify auth on mount
-  useEffect(() => {
-    setIsSpotifyConnected(isAuthenticated());
-  }, []);
 
   // Warn before closing during sync
   useEffect(() => {
@@ -55,6 +68,7 @@ export default function Home() {
     setAppleTracks(result.tracks);
     setPlaylistName(result.playlistName);
     setFlowState("scraped");
+    sessionStorage.setItem("scrapeResult", JSON.stringify(result));
   }
 
   function handleScrapeLoading(loading: boolean) {
@@ -102,6 +116,7 @@ export default function Home() {
     setSyncResults([]);
     setSyncProgress(0);
     setSyncSummary(null);
+    sessionStorage.removeItem("scrapeResult");
   }
 
   return (
@@ -110,12 +125,13 @@ export default function Home() {
         {/* Header */}
         <header className="text-center space-y-3 animate-fade-in">
           <h1 className="text-4xl sm:text-5xl font-heading font-bold tracking-tight text-foreground">
-            <span className="text-apple-red">Sync</span>
-            <span className="text-spotify-green">wave</span>
+            <span className="text-apple-red">Apple Music</span>
+            <span className="text-muted-foreground"> to </span>
+            <span className="text-spotify-green">Spotify</span>
+            <span className="text-foreground"> Sync</span>
           </h1>
           <p className="text-muted-foreground text-base max-w-md mx-auto">
-            Sync your Apple Music playlists to Spotify. Paste a link, connect
-            your account, and let it flow.
+            Paste a playlist link, connect your Spotify, and sync your tracks.
           </p>
         </header>
 
@@ -226,8 +242,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="text-center animate-fade-in">
           <p className="text-xs text-muted/50">
-            Syncwave does not store any of your data. All processing happens in
-            your browser.
+            Your data is never stored. All processing happens in your browser.
           </p>
         </footer>
       </main>

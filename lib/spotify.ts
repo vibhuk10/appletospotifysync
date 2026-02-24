@@ -12,7 +12,9 @@ const TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
 const API_BASE = "https://api.spotify.com/v1";
 
 function getRedirectUri(): string {
-  return `${window.location.origin}/callback`;
+  // Spotify rejects "localhost" as a redirect URI — use 127.0.0.1 for local dev
+  const origin = window.location.origin.replace("://localhost", "://127.0.0.1");
+  return `${origin}/callback`;
 }
 
 // --- PKCE Helpers ---
@@ -138,12 +140,18 @@ export function clearAuth(): void {
 
 async function spotifyFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = await getAccessToken();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+  // Only set Content-Type for requests with a body
+  if (options.body) {
+    headers["Content-Type"] = "application/json";
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...options.headers,
+      ...headers,
+      ...(options.headers as Record<string, string>),
     },
   });
 
@@ -152,6 +160,15 @@ async function spotifyFetch(path: string, options: RequestInit = {}): Promise<Re
     const retryAfter = Number(response.headers.get("Retry-After") || 1);
     await sleep(retryAfter * 1000);
     return spotifyFetch(path, options);
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`Spotify API ${response.status}: ${path}`, errorBody);
+    if (response.status === 401) {
+      clearAuth();
+    }
+    throw new Error(`Spotify API error ${response.status}: ${path}`);
   }
 
   return response;
@@ -179,7 +196,11 @@ export async function getUserPlaylists(): Promise<SpotifyPlaylistInfo[]> {
     const res = await spotifyFetch(url);
     const data = await res.json();
     for (const p of data.items || []) {
-      playlists.push({ id: p.id, name: p.name, trackCount: p.tracks?.total || 0 });
+      playlists.push({
+        id: p.id,
+        name: p.name,
+        trackCount: (p.tracks?.total ?? p.items?.total) ?? 0,
+      });
     }
     // next is a full URL, extract the path
     if (data.next) {
@@ -193,10 +214,9 @@ export async function getUserPlaylists(): Promise<SpotifyPlaylistInfo[]> {
 }
 
 export async function createPlaylist(
-  userId: string,
   name: string
 ): Promise<SpotifyPlaylistInfo> {
-  const res = await spotifyFetch(`/users/${userId}/playlists`, {
+  const res = await spotifyFetch("/me/playlists", {
     method: "POST",
     body: JSON.stringify({ name, public: false }),
   });
@@ -210,59 +230,64 @@ async function searchTrack(
   title: string,
   artist: string
 ): Promise<{ id: string; name: string; artist: string; uri: string } | null> {
-  // Try specific search first
-  const specificQuery = encodeURIComponent(`track:${title} artist:${artist}`);
-  let res = await spotifyFetch(`/search?q=${specificQuery}&type=track&limit=5`);
-  let data = await res.json();
-  let tracks = data?.tracks?.items || [];
+  try {
+    // Try specific search first
+    const specificQuery = encodeURIComponent(`track:${title} artist:${artist}`);
+    let res = await spotifyFetch(`/search?q=${specificQuery}&type=track&limit=5`);
+    let data = await res.json();
+    let tracks = data?.tracks?.items || [];
 
-  if (tracks.length > 0) {
-    // Try to find a good match
-    const normTitle = normalize(title);
-    const normArtist = normalize(artist);
+    if (tracks.length > 0) {
+      // Try to find a good match
+      const normTitle = normalize(title);
+      const normArtist = normalize(artist);
 
-    for (const t of tracks) {
-      const spTitle = normalize(t.name);
-      const spArtist = normalize(t.artists?.[0]?.name || "");
-      if (
-        (normTitle.includes(spTitle) || spTitle.includes(normTitle)) &&
-        (normArtist.includes(spArtist) || spArtist.includes(normArtist))
-      ) {
-        return {
-          id: t.id,
-          name: t.name,
-          artist: t.artists?.[0]?.name || "",
-          uri: t.uri,
-        };
+      for (const t of tracks) {
+        const spTitle = normalize(t.name);
+        const spArtist = normalize(t.artists?.[0]?.name || "");
+        if (
+          (normTitle.includes(spTitle) || spTitle.includes(normTitle)) &&
+          (normArtist.includes(spArtist) || spArtist.includes(normArtist))
+        ) {
+          return {
+            id: t.id,
+            name: t.name,
+            artist: t.artists?.[0]?.name || "",
+            uri: t.uri,
+          };
+        }
       }
+      // No strong match - return top result
+      const top = tracks[0];
+      return {
+        id: top.id,
+        name: top.name,
+        artist: top.artists?.[0]?.name || "",
+        uri: top.uri,
+      };
     }
-    // No strong match - return top result
-    const top = tracks[0];
-    return {
-      id: top.id,
-      name: top.name,
-      artist: top.artists?.[0]?.name || "",
-      uri: top.uri,
-    };
+
+    // Fallback: simpler query
+    const fallbackQuery = encodeURIComponent(`${title} ${artist}`);
+    res = await spotifyFetch(`/search?q=${fallbackQuery}&type=track&limit=3`);
+    data = await res.json();
+    tracks = data?.tracks?.items || [];
+
+    if (tracks.length > 0) {
+      const top = tracks[0];
+      return {
+        id: top.id,
+        name: top.name,
+        artist: top.artists?.[0]?.name || "",
+        uri: top.uri,
+      };
+    }
+
+    return null;
+  } catch (err) {
+    console.error(`Search failed for "${title}" - "${artist}":`, err);
+    return null;
   }
-
-  // Fallback: simpler query
-  const fallbackQuery = encodeURIComponent(`${title} ${artist}`);
-  res = await spotifyFetch(`/search?q=${fallbackQuery}&type=track&limit=3`);
-  data = await res.json();
-  tracks = data?.tracks?.items || [];
-
-  if (tracks.length > 0) {
-    const top = tracks[0];
-    return {
-      id: top.id,
-      name: top.name,
-      artist: top.artists?.[0]?.name || "",
-      uri: top.uri,
-    };
-  }
-
-  return null;
 }
 
 // --- Get Existing Playlist Tracks ---
@@ -272,14 +297,14 @@ async function getExistingPlaylistTracks(
 ): Promise<{ ids: Set<string>; normalized: Set<string> }> {
   const ids = new Set<string>();
   const normalized = new Set<string>();
-  let url = `/playlists/${playlistId}/tracks?limit=100&fields=items(track(id,name,artists(name))),next`;
+  let url = `/playlists/${playlistId}/items?limit=100&fields=items(item(id,name,artists(name))),next`;
 
   while (url) {
     const res = await spotifyFetch(url);
     const data = await res.json();
 
     for (const item of data.items || []) {
-      const track = item.track;
+      const track = item.item ?? item.track;
       if (!track?.id) continue;
       ids.add(track.id);
       const normTitle = normalize(track.name || "");
@@ -365,7 +390,7 @@ export async function syncPlaylist(
   // Add tracks in batches of 100
   for (let i = 0; i < toAdd.length; i += 100) {
     const batch = toAdd.slice(i, i + 100);
-    await spotifyFetch(`/playlists/${playlistId}/tracks`, {
+    await spotifyFetch(`/playlists/${playlistId}/items`, {
       method: "POST",
       body: JSON.stringify({ uris: batch }),
     });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import {
   isAuthenticated,
   redirectToSpotifyAuth,
@@ -13,33 +13,37 @@ interface SpotifyAuthProps {
 }
 
 export default function SpotifyAuth({ onAuthChange }: SpotifyAuthProps) {
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(
+    () => typeof window !== "undefined" && isAuthenticated()
+  );
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const checkAuth = useCallback(async () => {
-    setLoading(true);
-    const authed = isAuthenticated();
-    setConnected(authed);
-    onAuthChange(authed);
-
-    if (authed) {
-      try {
-        const user = await getCurrentUser();
-        setDisplayName(user.displayName);
-      } catch {
-        // Token might be invalid
-        clearAuth();
-        setConnected(false);
-        onAuthChange(false);
-      }
-    }
-    setLoading(false);
-  }, [onAuthChange]);
+  const [loading, setLoading] = useState(
+    () => typeof window !== "undefined" && isAuthenticated()
+  );
 
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    onAuthChange(connected);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    getCurrentUser()
+      .then((user) => {
+        if (!cancelled) setDisplayName(user.displayName);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          clearAuth();
+          setConnected(false);
+          onAuthChange(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [connected, onAuthChange]);
 
   function handleConnect() {
     redirectToSpotifyAuth();

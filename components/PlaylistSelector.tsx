@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import {
   getUserPlaylists,
   createPlaylist,
-  getCurrentUser,
 } from "@/lib/spotify";
 import type { SpotifyPlaylistInfo } from "@/lib/types";
 
@@ -47,8 +46,7 @@ export default function PlaylistSelector({
     setError(null);
 
     try {
-      const user = await getCurrentUser();
-      const playlist = await createPlaylist(user.id, newName.trim());
+      const playlist = await createPlaylist(newName.trim());
       setPlaylists((prev) => [playlist, ...prev]);
       setSelectedId(playlist.id);
       setMode("select");

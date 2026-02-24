@@ -68,9 +68,9 @@ export default function AppleMusicInput({
         tracks: data.tracks,
         playlistName: data.playlistName,
       });
+      // Don't call onLoadingChange(false) here — onResult transitions the flow state
     } catch {
       setError("Network error. Please check your connection and try again.");
-    } finally {
       onLoadingChange(false);
     }
   }

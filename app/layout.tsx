@@ -17,9 +17,9 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Syncwave - Apple Music to Spotify",
+  title: "Apple Music to Spotify Sync",
   description:
-    "Seamlessly sync your Apple Music playlists to Spotify. Paste a link, connect your account, and let Syncwave handle the rest.",
+    "Seamlessly sync your Apple Music playlists to Spotify. Paste a link, connect your account, and sync your tracks.",
 };
 
 export default function RootLayout({
