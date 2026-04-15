@@ -138,7 +138,7 @@ export function clearAuth(): void {
 
 // --- Spotify API Helpers ---
 
-async function spotifyFetch(
+export async function spotifyFetch(
   path: string,
   options: RequestInit = {},
   retries = 0
@@ -210,6 +210,7 @@ export async function getUserPlaylists(): Promise<SpotifyPlaylistInfo[]> {
         id: p.id,
         name: p.name,
         trackCount: (p.tracks?.total ?? p.items?.total) ?? 0,
+        ownerId: p.owner?.id,
       });
     }
     // next is a full URL, extract the path
@@ -304,7 +305,7 @@ async function searchTrack(
 
 // --- Get Existing Playlist Tracks ---
 
-async function getExistingPlaylistTracks(
+export async function getExistingPlaylistTracks(
   playlistId: string
 ): Promise<{ ids: Set<string>; normalized: Set<string> }> {
   const ids = new Set<string>();
@@ -332,6 +333,63 @@ async function getExistingPlaylistTracks(
   }
 
   return { ids, normalized };
+}
+
+export interface DetailedTrack {
+  id: string;
+  uri: string;
+  name: string;
+  artists: Array<{ id: string; name: string }>;
+}
+
+export async function getPlaylistTracksDetailed(
+  playlistId: string
+): Promise<DetailedTrack[]> {
+  const tracks: DetailedTrack[] = [];
+  let url = `/playlists/${playlistId}/items?limit=100&fields=items(item(id,uri,name,type,is_local,artists(id,name))),next`;
+
+  while (url) {
+    const res = await spotifyFetch(url);
+    const data = await res.json();
+
+    for (const item of data.items || []) {
+      const track = item.item ?? item.track;
+      if (!track?.id || !track?.uri) continue;
+      if (track.is_local) continue;
+      if (track.type && track.type !== "track") continue;
+      const artists = (track.artists || [])
+        .filter((a: { id?: string; name?: string }) => a?.id && a?.name)
+        .map((a: { id: string; name: string }) => ({ id: a.id, name: a.name }));
+      if (artists.length === 0) continue;
+      tracks.push({
+        id: track.id,
+        uri: track.uri,
+        name: track.name || "",
+        artists,
+      });
+    }
+
+    if (data.next) {
+      url = data.next.replace(API_BASE, "");
+    } else {
+      url = "";
+    }
+  }
+
+  return tracks;
+}
+
+export async function addTracksToPlaylist(
+  playlistId: string,
+  uris: string[]
+): Promise<void> {
+  for (let i = 0; i < uris.length; i += 100) {
+    const batch = uris.slice(i, i + 100);
+    await spotifyFetch(`/playlists/${playlistId}/items`, {
+      method: "POST",
+      body: JSON.stringify({ uris: batch }),
+    });
+  }
 }
 
 // --- Sync Orchestrator ---
@@ -417,15 +475,7 @@ export async function syncPlaylist(
     await sleep(trackDelay);
   }
 
-  // Add tracks in batches of 100
-  for (let i = 0; i < toAdd.length; i += 100) {
-    const batch = toAdd.slice(i, i + 100);
-    await spotifyFetch(`/playlists/${playlistId}/items`, {
-      method: "POST",
-      body: JSON.stringify({ uris: batch }),
-    });
-  }
-
+  await addTracksToPlaylist(playlistId, toAdd);
   added = toAdd.length;
 
   return {

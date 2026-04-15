@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import AppleMusicInput from "@/components/AppleMusicInput";
 import TrackList from "@/components/TrackList";
 import SpotifyAuth from "@/components/SpotifyAuth";
@@ -133,6 +134,12 @@ export default function Home() {
           <p className="text-muted-foreground text-base max-w-md mx-auto">
             Paste a playlist link, connect your Spotify, and sync your tracks.
           </p>
+          <Link
+            href="/artist-playlists"
+            className="inline-block text-xs text-muted-foreground hover:text-foreground focus:outline-none focus:underline"
+          >
+            Build artist playlists from your library →
+          </Link>
         </header>
 
         {/* Step indicators */}

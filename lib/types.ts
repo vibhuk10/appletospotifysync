@@ -34,4 +34,32 @@ export interface SpotifyPlaylistInfo {
   id: string;
   name: string;
   trackCount: number;
+  ownerId?: string;
+}
+
+export interface ArtistAggregate {
+  id: string;
+  name: string;
+  trackCount: number;
+  trackUris: string[];
+}
+
+export type ArtistBuildStatus = "pending" | "building" | "done" | "error";
+
+export interface ArtistBuildResult {
+  artist: ArtistAggregate;
+  created: boolean;
+  added: number;
+  skipped: number;
+  status: ArtistBuildStatus;
+  error?: string;
+  playlistId?: string;
+}
+
+export interface ScanProgress {
+  playlistsScanned: number;
+  totalPlaylists: number;
+  uniqueTracks: number;
+  uniqueArtists: number;
+  currentPlaylist?: string;
 }
